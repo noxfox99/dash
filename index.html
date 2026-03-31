@@ -732,7 +732,81 @@ td { padding: 13px 18px; vertical-align: middle; }
       <div class="info-line">• Recommended: pre-fund all source wallets with <span style="color:#ffb700">10 TRX</span> before batch sweep</div>
     </div>
   </div>
+<!-- ANALYTICS TAB -->
 
+  <div class="tab-content" id="tab-analytics">
+
+<div class="import-zone" id="analyticsZone" onclick="document.getElementById('analyticsInput').click()"
+     ondragover="handleDragOver2(event)" ondragleave="handleDragLeave2(event)" ondrop="handleDrop2(event)">
+  <div class="import-zone-icon">&#128202;</div>
+  <div class="import-zone-text">Drop income CSV or <span>click to browse</span></div>
+  <div style="font-size:11px;color:#5a6478;margin-top:6px;font-family:'Space Mono','Courier New',monospace">
+    Columns: date (YYYY-MM-DD or DD/MM/YYYY), amount
+  </div>
+</div>
+<input type="file" id="analyticsInput" accept=".csv" style="display:none" onchange="handleAnalyticsFile(event)" />
+
+<div id="analyticsEmpty" style="text-align:center;padding:60px 20px;color:#5a6478;font-family:'Space Mono','Courier New',monospace;font-size:12px;line-height:2">
+  No income data loaded.<br/>Import a CSV with &quot;date&quot; and &quot;amount&quot; columns.
+</div>
+
+<div id="analyticsContent" style="display:none">
+
+  <div class="stats-row" style="margin-top:0;margin-bottom:24px">
+    <div class="stat-card">
+      <div class="stat-label">Total Income</div>
+      <div class="stat-value green" id="aTotal">0.00</div>
+      <div class="stat-sub">USD all time</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Best Month</div>
+      <div class="stat-value blue" id="aBestMonth">-</div>
+      <div class="stat-sub" id="aBestMonthLabel">-</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Best Week</div>
+      <div class="stat-value" style="color:#ffb700" id="aBestWeek">-</div>
+      <div class="stat-sub" id="aBestWeekLabel">-</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Avg / Month</div>
+      <div class="stat-value" id="aAvgMonth">0.00</div>
+      <div class="stat-sub">USD average</div>
+    </div>
+  </div>
+
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px">
+    <div class="section-title">Income Breakdown</div>
+    <div style="display:flex;gap:4px;background:#0e1219;padding:4px;border-radius:10px;border:1px solid #1e2530">
+      <button class="tab active" id="viewMonthBtn" onclick="switchAnalyticsView('month',this)" style="padding:5px 14px;font-size:11px">Monthly</button>
+      <button class="tab" id="viewWeekBtn" onclick="switchAnalyticsView('week',this)" style="padding:5px 14px;font-size:11px">Weekly</button>
+    </div>
+  </div>
+
+  <div style="background:#0e1219;border:1px solid #1e2530;border-radius:16px;padding:24px 20px 16px;margin-bottom:20px">
+    <canvas id="incomeChart" height="200"></canvas>
+  </div>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>#</th>
+          <th id="periodColLabel">Period</th>
+          <th>Income (USD)</th>
+          <th>Transactions</th>
+          <th>vs Previous</th>
+          <th>Share of Total</th>
+        </tr>
+      </thead>
+      <tbody id="analyticsTableBody"></tbody>
+    </table>
+  </div>
+
+</div>
+
+
+  </div>
   <!-- LOG TAB -->
   <div class="tab-content" id="tab-log">
     <div class="section-header">
