@@ -933,9 +933,11 @@ function statusBadge(s) {
 }
 
 // ── ANALYTICS ──────────────────────────────────────────────────────────────
-var incomeData = [];
+var incomeData   = [];
 var analyticsView = 'month';
+var activePeriod  = 'all';
 var MNAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+var METHOD_COLORS = ['#00e5a0','#00b8ff','#ffb700','#ff4560','#a78bfa','#fb923c','#34d399','#f472b6'];
 
 function handleDragOver2(e) {
   e.preventDefault();
@@ -973,35 +975,51 @@ function parseIncDate(str) {
 
 function parseIncomeCSV(text) {
   var lines = text.trim().split('\n');
-  if (lines.length < 2) { log('Income CSV too short.', 'err'); return; }
-  var headers = lines[0].split(',').map(function(h) {
-    return h.trim().toLowerCase().replace(/["']/g, '');
-  });
-  var iDate = -1, iAmt = -1;
-  for (var i = 0; i < headers.length; i++) {
-    if (headers[i].indexOf('date') > -1 || headers[i].indexOf('time') > -1) iDate = i;
-    if (headers[i].indexOf('amount') > -1 || headers[i].indexOf('usd') > -1 ||
-        headers[i].indexOf('value') > -1  || headers[i].indexOf('sum') > -1) iAmt = i;
+  if (lines.length < 2) { log('CSV слишком короткий.','err'); return; }
+  var headers = lines[0].split(',').map(function(h){ return h.trim().toLowerCase().replace(/["']/g,''); });
+  var iDate=-1, iAmt=-1, iMethod=-1;
+  for (var i=0;i<headers.length;i++) {
+    if (headers[i].indexOf('date')>-1||headers[i].indexOf('time')>-1) iDate=i;
+    if (headers[i].indexOf('amount')>-1||headers[i].indexOf('usd')>-1||headers[i].indexOf('sum')>-1||headers[i].indexOf('value')>-1) iAmt=i;
+    if (headers[i].indexOf('method')>-1||headers[i].indexOf('type')>-1||headers[i].indexOf('payment')>-1) iMethod=i;
   }
-  if (iDate === -1 || iAmt === -1) {
-    log('CSV needs "date" and "amount" columns.', 'err');
-    return;
+  if (iDate===-1||iAmt===-1) { log('CSV должен содержать колонки "date" и "amount".','err'); return; }
+  var rows=[];
+  for (var i=1;i<lines.length;i++) {
+    var line=lines[i].trim(); if(!line) continue;
+    var cols=line.split(',').map(function(c){ return c.trim().replace(/^["']|["']$/g,''); });
+    var d=parseIncDate(cols[iDate]); var a=parseFloat(cols[iAmt]);
+    if (!d||isNaN(a)) continue;
+    rows.push({ date:d, amount:a, method: iMethod>-1 ? (cols[iMethod]||'unknown').toLowerCase() : 'unknown' });
   }
-  var rows = [];
-  for (var i = 1; i < lines.length; i++) {
-    var line = lines[i].trim();
-    if (!line) continue;
-    var cols = line.split(',').map(function(c) { return c.trim().replace(/^["']|["']$/g, ''); });
-    var d = parseIncDate(cols[iDate]);
-    var a = parseFloat(cols[iAmt]);
-    if (!d || isNaN(a)) continue;
-    rows.push({ date: d, amount: a });
+  if (!rows.length) { log('Нет корректных строк в CSV.','err'); return; }
+  incomeData=rows;
+  log('Загружено '+rows.length+' строк доходов.','ok');
+  document.getElementById('analyticsEmpty').style.display='none';
+  document.getElementById('analyticsContent').style.display='block';
+  renderAnalytics();
+}
+function filterByPeriod(rows) {
+  if (activePeriod==='all') return rows;
+  var now=new Date(), filtered=[];
+  for (var i=0;i<rows.length;i++) {
+    var d=rows[i].date;
+    if (activePeriod==='year'  && d.getFullYear()===now.getFullYear()) filtered.push(rows[i]);
+    else if (activePeriod==='month' && d.getFullYear()===now.getFullYear()&&d.getMonth()===now.getMonth()) filtered.push(rows[i]);
+    else if (activePeriod==='week') {
+      var weekStart=new Date(now); weekStart.setDate(now.getDate()-((now.getDay()+6)%7)); weekStart.setHours(0,0,0,0);
+      if (d>=weekStart) filtered.push(rows[i]);
+    }
   }
-  if (!rows.length) { log('No valid rows in income CSV.', 'err'); return; }
-  incomeData = rows;
-  log('Loaded ' + rows.length + ' income rows.', 'ok');
-  document.getElementById('analyticsEmpty').style.display = 'none';
-  document.getElementById('analyticsContent').style.display = 'block';
+  return filtered;
+}
+
+  
+function setPeriod(p, el) {
+  activePeriod=p;
+  var btns=document.querySelectorAll('#pAll,#pYear,#pMonth,#pWeek');
+  for (var i=0;i<btns.length;i++) btns[i].classList.remove('active');
+  el.classList.add('active');
   renderAnalytics();
 }
 
@@ -1019,7 +1037,11 @@ function getWeekKey(d) {
   var dd = tmp.getDate();
   return tmp.getFullYear() + '-' + (mm < 10 ? '0' : '') + mm + '-' + (dd < 10 ? '0' : '') + dd;
 }
-
+function allMethods(rows) {
+  var map={};
+  for (var i=0;i<rows.length;i++) map[rows[i].method]=1;
+  return Object.keys(map).sort();
+}
 function fmtMonthKey(k) {
   var p = k.split('-');
   return MNAMES[parseInt(p[1]) - 1] + ' ' + p[0];
@@ -1040,37 +1062,81 @@ function groupByKey(keyFn) {
   order.sort();
   return order.map(function(k) { return map[k]; });
 }
-
-function renderAnalytics() {
-  var groups = analyticsView === 'month' ? groupByKey(getMonthKey) : groupByKey(getWeekKey);
-  var monthGroups = groupByKey(getMonthKey);
-  var weekGroups  = groupByKey(getWeekKey);
-
-  var total = 0;
-  for (var i = 0; i < groups.length; i++) total += groups[i].amount;
-
-  var bestM = { amount: 0, key: '' };
-  for (var i = 0; i < monthGroups.length; i++) {
-    if (monthGroups[i].amount > bestM.amount) bestM = monthGroups[i];
+function groupByKey(rows, keyFn) {
+  var map={},order=[];
+  for (var i=0;i<rows.length;i++) {
+    var k=keyFn(rows[i].date);
+    if (!map[k]) { map[k]={key:k,amount:0,count:0,byMethod:{}}; order.push(k); }
+    map[k].amount+=rows[i].amount; map[k].count++;
+    map[k].byMethod[rows[i].method]=(map[k].byMethod[rows[i].method]||0)+rows[i].amount;
   }
-  var bestW = { amount: 0, key: '' };
-  for (var i = 0; i < weekGroups.length; i++) {
-    if (weekGroups[i].amount > bestW.amount) bestW = weekGroups[i];
-  }
-  var avgMonth = monthGroups.length ? total / monthGroups.length : 0;
-
-  document.getElementById('aTotal').textContent       = '$' + total.toFixed(2);
-  document.getElementById('aBestMonth').textContent   = '$' + bestM.amount.toFixed(2);
-  document.getElementById('aBestMonthLabel').textContent = bestM.key ? fmtMonthKey(bestM.key) : '-';
-  document.getElementById('aBestWeek').textContent    = '$' + bestW.amount.toFixed(2);
-  document.getElementById('aBestWeekLabel').textContent  = bestW.key ? bestW.key : '-';
-  document.getElementById('aAvgMonth').textContent    = '$' + avgMonth.toFixed(2);
-  document.getElementById('periodColLabel').textContent  = analyticsView === 'month' ? 'Month' : 'Week';
-
-  drawBarChart(groups);
-  renderIncomeTable(groups, total);
+  order.sort();
+  return order.map(function(k){ return map[k]; });
 }
 
+function methodColorMap(methods) {
+  var map={};
+  for (var i=0;i<methods.length;i++) map[methods[i]]=METHOD_COLORS[i%METHOD_COLORS.length];
+  return map;
+}
+
+function renderAnalytics() {
+  var filtered = filterByPeriod(incomeData);
+  var groups   = analyticsView==='month' ? groupByKey(filtered,getMonthKey) : groupByKey(filtered,getWeekKey);
+  var mGroups  = groupByKey(filtered,getMonthKey);
+  var wGroups  = groupByKey(filtered,getWeekKey);
+  var methods  = allMethods(filtered);
+  var colMap   = methodColorMap(methods);
+
+  var total=0; for (var i=0;i<filtered.length;i++) total+=filtered[i].amount;
+
+  var bestM={amount:0,key:''};
+  for (var i=0;i<mGroups.length;i++) { if(mGroups[i].amount>bestM.amount) bestM=mGroups[i]; }
+  var bestW={amount:0,key:''};
+  for (var i=0;i<wGroups.length;i++) { if(wGroups[i].amount>bestW.amount) bestW=wGroups[i]; }
+  var avgMonth = mGroups.length ? total/mGroups.length : 0;
+
+  document.getElementById('aTotal').textContent       = '$'+total.toFixed(2);
+  document.getElementById('aBestMonth').textContent   = '$'+bestM.amount.toFixed(2);
+  document.getElementById('aBestMonthLabel').textContent = bestM.key ? fmtMonthKey(bestM.key) : '-';
+  document.getElementById('aBestWeek').textContent    = '$'+bestW.amount.toFixed(2);
+  document.getElementById('aBestWeekLabel').textContent  = bestW.key||'-';
+  document.getElementById('aAvgMonth').textContent    = '$'+avgMonth.toFixed(2);
+  document.getElementById('periodColLabel').textContent  = analyticsView==='month' ? 'Месяц' : 'Неделя';
+
+  renderMethodBar(filtered, methods, colMap, total);
+  drawBarChart(groups);
+  renderIncomeTable(groups, total, colMap);
+}
+
+function renderMethodBar(rows, methods, colMap, total) {
+  // Method summary cards
+  var methodTotals={};
+  for (var i=0;i<rows.length;i++) methodTotals[rows[i].method]=(methodTotals[rows[i].method]||0)+rows[i].amount;
+
+  var cardsHtml='';
+  for (var i=0;i<methods.length;i++) {
+    var m=methods[i]; var amt=methodTotals[m]||0; var col=colMap[m];
+    var pct=total>0?(amt/total*100):0;
+    cardsHtml+='<div style="background:#141820;border:1px solid #1e2530;border-radius:10px;padding:12px 16px;min-width:130px;flex:1">'
+      +'<div style="display:flex;align-items:center;gap:6px;margin-bottom:6px">'
+      +'<div style="width:8px;height:8px;border-radius:50%;background:'+col+'"></div>'
+      +'<span style="font-size:10px;letter-spacing:1px;text-transform:uppercase;color:#5a6478">'+m+'</span></div>'
+      +'<div style="font-family:Courier New,monospace;font-size:18px;font-weight:700;color:'+col+'">'
+      +'$'+amt.toFixed(2)+'</div>'
+      +'<div style="font-family:Courier New,monospace;font-size:10px;color:#5a6478;margin-top:3px">'+pct.toFixed(1)+'% от общего</div>'
+      +'</div>';
+  }
+  document.getElementById('methodCards').innerHTML = cardsHtml;
+  // Strip bar
+  var stripHtml='';
+  for (var i=0;i<methods.length;i++) {
+    var m=methods[i]; var amt=methodTotals[m]||0; var col=colMap[m];
+    var pct=total>0?(amt/total*100):0;
+    if (pct>0) stripHtml+='<div style="width:'+pct+'%;background:'+col+';height:100%;transition:width 0.4s"></div>';
+  }
+  document.getElementById('methodStripBar').innerHTML = stripHtml;
+}
 function switchAnalyticsView(view, el) {
   analyticsView = view;
   var btns = document.querySelectorAll('#viewMonthBtn,#viewWeekBtn');
@@ -1078,167 +1144,167 @@ function switchAnalyticsView(view, el) {
   el.classList.add('active');
   renderAnalytics();
 }
+// ── Drill-down ─────────────────────────────────────────────────────────────
+function openDrill(group, colMap) {
+  var methods=Object.keys(group.byMethod).sort();
+  var panel=document.getElementById('drillPanel');
+  var title=analyticsView==='month' ? fmtMonthKey(group.key) : 'Неделя с '+group.key;
+  document.getElementById('drillTitle').textContent = title+' — по методам оплаты';
+  var html='';
+  for (var i=0;i<methods.length;i++) {
+    var m=methods[i]; var amt=group.byMethod[m]; var col=colMap[m]||'#5a6478';
+    var pct=group.amount>0?(amt/group.amount*100):0;
+    html+='<div style="background:#080b10;border:1px solid '+col+'33;border-radius:10px;padding:12px 18px;min-width:140px;flex:1">'
+      +'<div style="display:flex;align-items:center;gap:6px;margin-bottom:6px">'
+      +'<div style="width:8px;height:8px;border-radius:50%;background:'+col+'"></div>'
+      +'<span style="font-size:10px;letter-spacing:1px;text-transform:uppercase;color:#5a6478">'+m+'</span></div>'
+      +'<div style="font-family:Courier New,monospace;font-size:20px;font-weight:700;color:'+col+'">'
+      +'$'+amt.toFixed(2)+'</div>'
+      +'<div style="margin-top:8px;height:4px;background:#1e2530;border-radius:2px;overflow:hidden">'
+      +'<div style="width:'+pct.toFixed(1)+'%;height:100%;background:'+col+';border-radius:2px"></div></div>'
+      +'<div style="font-family:Courier New,monospace;font-size:10px;color:#5a6478;margin-top:4px">'+pct.toFixed(1)+'% от периода</div>'
+      +'</div>';
+  }
+  document.getElementById('drillCards').innerHTML=html;
+  panel.style.display='block';
+  panel.scrollIntoView({behavior:'smooth',block:'nearest'});
+}
 
+function closeDrill() {
+  document.getElementById('drillPanel').style.display='none';
+}
 // ── Pure canvas bar chart — no libraries ──────────────────────────────────
+/ ── Canvas bar chart ───────────────────────────────────────────────────────
 function drawBarChart(groups) {
-  var canvas = document.getElementById('incomeChart');
-  if (!canvas) return;
-
-  // Responsive width
-  var wrapper = canvas.parentNode;
-  var W = wrapper.clientWidth - 40;
-  if (W < 200) W = 200;
-  var H = 220;
-  canvas.width  = W;
-  canvas.height = H;
-
-  var ctx = canvas.getContext('2d');
-  ctx.clearRect(0, 0, W, H);
-
+  var canvas=document.getElementById('incomeChart'); if(!canvas) return;
+  var W=canvas.parentNode.clientWidth-40; if(W<200) W=200;
+  var H=220; canvas.width=W; canvas.height=H;
+  var ctx=canvas.getContext('2d'); ctx.clearRect(0,0,W,H);
   if (!groups.length) return;
 
-  var PAD_L = 64, PAD_R = 20, PAD_T = 16, PAD_B = 48;
-  var chartW = W - PAD_L - PAD_R;
-  var chartH = H - PAD_T - PAD_B;
+  var PAD_L=64,PAD_R=20,PAD_T=16,PAD_B=48;
+  var cW=W-PAD_L-PAD_R, cH=H-PAD_T-PAD_B;
+  var maxVal=0;
+  for (var i=0;i<groups.length;i++) if(groups[i].amount>maxVal) maxVal=groups[i].amount;
+  if (maxVal===0) maxVal=1;
 
-  var maxVal = 0;
-  for (var i = 0; i < groups.length; i++) {
-    if (groups[i].amount > maxVal) maxVal = groups[i].amount;
-  }
-  if (maxVal === 0) maxVal = 1;
-
-  // Grid lines
-  var gridSteps = 4;
-  ctx.strokeStyle = 'rgba(30,37,48,0.9)';
-  ctx.lineWidth = 1;
-  ctx.fillStyle = '#5a6478';
-  ctx.font = '10px Courier New, monospace';
-  ctx.textAlign = 'right';
-  for (var s = 0; s <= gridSteps; s++) {
-    var yVal = (maxVal / gridSteps) * s;
-    var yPos = PAD_T + chartH - (chartH * s / gridSteps);
-    ctx.beginPath();
-    ctx.moveTo(PAD_L, yPos);
-    ctx.lineTo(PAD_L + chartW, yPos);
-    ctx.stroke();
-    var label = yVal >= 1000 ? '$' + (yVal/1000).toFixed(1) + 'k' : '$' + yVal.toFixed(0);
-    ctx.fillText(label, PAD_L - 6, yPos + 3);
+  // Grid
+  ctx.strokeStyle='rgba(30,37,48,0.9)'; ctx.lineWidth=1;
+  ctx.fillStyle='#5a6478'; ctx.font='10px Courier New,monospace'; ctx.textAlign='right';
+  for (var s=0;s<=4;s++) {
+    var yVal=maxVal/4*s; var yPos=PAD_T+cH-(cH*s/4);
+    ctx.beginPath(); ctx.moveTo(PAD_L,yPos); ctx.lineTo(PAD_L+cW,yPos); ctx.stroke();
+    var lbl=yVal>=1000?'$'+(yVal/1000).toFixed(1)+'k':'$'+yVal.toFixed(0);
+    ctx.fillText(lbl,PAD_L-6,yPos+3);
   }
 
-  // Bars
-  var n = groups.length;
-  var barGap = Math.max(2, Math.floor(chartW / n * 0.18));
-  var barW   = Math.max(4, Math.floor(chartW / n) - barGap);
+  var n=groups.length;
+  var barGap=Math.max(2,Math.floor(cW/n*0.18));
+  var barW=Math.max(4,Math.floor(cW/n)-barGap);
 
-  for (var i = 0; i < n; i++) {
-    var g = groups[i];
-    var barH   = Math.max(2, (g.amount / maxVal) * chartH);
-    var xStart = PAD_L + Math.floor(i * chartW / n) + Math.floor(barGap / 2);
-    var yStart = PAD_T + chartH - barH;
+  for (var i=0;i<n;i++) {
+    var g=groups[i];
+    var barH=Math.max(2,(g.amount/maxVal)*cH);
+    var xS=PAD_L+Math.floor(i*cW/n)+Math.floor(barGap/2);
+    var yS=PAD_T+cH-barH;
+    var r=Math.min(4,barW/2);
 
-    // Gradient fill
-    var grad = ctx.createLinearGradient(0, yStart, 0, yStart + barH);
-    grad.addColorStop(0, 'rgba(0,229,160,0.75)');
-    grad.addColorStop(1, 'rgba(0,229,160,0.10)');
-    ctx.fillStyle = grad;
+    var grad=ctx.createLinearGradient(0,yS,0,yS+barH);
+    grad.addColorStop(0,'rgba(0,229,160,0.75)');
+    grad.addColorStop(1,'rgba(0,229,160,0.08)');
+    ctx.fillStyle=grad;
 
-    // Rounded top
-    var r = Math.min(4, barW / 2);
     ctx.beginPath();
-    ctx.moveTo(xStart + r, yStart);
-    ctx.lineTo(xStart + barW - r, yStart);
-    ctx.quadraticCurveTo(xStart + barW, yStart, xStart + barW, yStart + r);
-    ctx.lineTo(xStart + barW, yStart + barH);
-    ctx.lineTo(xStart, yStart + barH);
-    ctx.lineTo(xStart, yStart + r);
-    ctx.quadraticCurveTo(xStart, yStart, xStart + r, yStart);
-    ctx.closePath();
-    ctx.fill();
+    ctx.moveTo(xS+r,yS); ctx.lineTo(xS+barW-r,yS);
+    ctx.quadraticCurveTo(xS+barW,yS,xS+barW,yS+r);
+    ctx.lineTo(xS+barW,yS+barH); ctx.lineTo(xS,yS+barH);
+    ctx.lineTo(xS,yS+r); ctx.quadraticCurveTo(xS,yS,xS+r,yS);
+    ctx.closePath(); ctx.fill();
 
-    // Border top glow
-    ctx.strokeStyle = '#00e5a0';
-    ctx.lineWidth = 1.5;
-    ctx.beginPath();
-    ctx.moveTo(xStart + r, yStart);
-    ctx.lineTo(xStart + barW - r, yStart);
-    ctx.quadraticCurveTo(xStart + barW, yStart, xStart + barW, yStart + r);
-    ctx.stroke();
+    ctx.strokeStyle='#00e5a0'; ctx.lineWidth=1.5;
+    ctx.beginPath(); ctx.moveTo(xS+r,yS); ctx.lineTo(xS+barW-r,yS);
+    ctx.quadraticCurveTo(xS+barW,yS,xS+barW,yS+r); ctx.stroke();
 
-    // X label
-    var lbl = analyticsView === 'month' ? fmtMonthKey(g.key) : g.key.slice(5);
-    ctx.fillStyle = '#5a6478';
-    ctx.font = '9px Courier New, monospace';
-    ctx.textAlign = 'center';
-    ctx.save();
-    ctx.translate(xStart + barW / 2, H - PAD_B + 14);
-    if (n > 8) {
-      ctx.rotate(-Math.PI / 4);
-      ctx.textAlign = 'right';
-    }
-    ctx.fillText(lbl, 0, 0);
-    ctx.restore();
+    var lbl2=analyticsView==='month'?fmtMonthKey(g.key):g.key.slice(5);
+    ctx.fillStyle='#5a6478'; ctx.font='9px Courier New,monospace'; ctx.textAlign='center';
+    ctx.save(); ctx.translate(xS+barW/2,H-PAD_B+14);
+    if(n>8){ctx.rotate(-Math.PI/4);ctx.textAlign='right';}
+    ctx.fillText(lbl2,0,0); ctx.restore();
 
-    // Value on top of bar if enough space
-    if (barH > 22 && barW > 28) {
-      var valLbl = g.amount >= 1000 ? '$' + (g.amount/1000).toFixed(1) + 'k' : '$' + g.amount.toFixed(0);
-      ctx.fillStyle = '#00e5a0';
-      ctx.font = 'bold 9px Courier New, monospace';
-      ctx.textAlign = 'center';
-      ctx.fillText(valLbl, xStart + barW / 2, yStart - 4);
+    if (barH>22&&barW>28) {
+      var vl=g.amount>=1000?'$'+(g.amount/1000).toFixed(1)+'k':'$'+g.amount.toFixed(0);
+      ctx.fillStyle='#00e5a0'; ctx.font='bold 9px Courier New,monospace'; ctx.textAlign='center';
+      ctx.fillText(vl,xS+barW/2,yS-4);
     }
   }
-
-  // Y axis line
-  ctx.strokeStyle = '#1e2530';
-  ctx.lineWidth = 1;
-  ctx.beginPath();
-  ctx.moveTo(PAD_L, PAD_T);
-  ctx.lineTo(PAD_L, PAD_T + chartH);
-  ctx.stroke();
+  ctx.strokeStyle='#1e2530'; ctx.lineWidth=1;
+  ctx.beginPath(); ctx.moveTo(PAD_L,PAD_T); ctx.lineTo(PAD_L,PAD_T+cH); ctx.stroke();
 }
 
-function renderIncomeTable(groups, total) {
-  var tbody = document.getElementById('analyticsTableBody');
-  if (!groups.length) { tbody.innerHTML = ''; return; }
-  var rows = '';
-  for (var i = 0; i < groups.length; i++) {
-    var g     = groups[i];
-    var lbl   = analyticsView === 'month' ? fmtMonthKey(g.key) : g.key;
-    var share = total > 0 ? (g.amount / total * 100) : 0;
-    var vsPrev = '';
-    if (i > 0) {
-      var prev = groups[i-1].amount;
-      var diff = prev > 0 ? ((g.amount - prev) / prev * 100) : 0;
-      var col  = diff >= 0 ? '#00e5a0' : '#ff4560';
-      vsPrev   = '<span style="color:' + col + ';font-weight:700">' + (diff >= 0 ? '+' : '') + diff.toFixed(1) + '%</span>';
-    } else {
-      vsPrev = '<span style="color:#5a6478">-</span>';
+function renderIncomeTable(groups, total, colMap) {
+  var tbody=document.getElementById('analyticsTableBody');
+  if (!groups.length) { tbody.innerHTML=''; return; }
+  var rows='';
+  for (var i=0;i<groups.length;i++) {
+    var g=groups[i];
+    var lbl=analyticsView==='month'?fmtMonthKey(g.key):g.key;
+    var share=total>0?(g.amount/total*100):0;
+    var vsPrev='<span style="color:#5a6478">-</span>';
+    if (i>0) {
+      var prev=groups[i-1].amount;
+      if (prev>0) {
+        var diff=(g.amount-prev)/prev*100;
+        var col=diff>=0?'#00e5a0':'#ff4560';
+        vsPrev='<span style="color:'+col+';font-weight:700">'+(diff>=0?'+':'')+diff.toFixed(1)+'%</span>';
+      }
     }
-    var bw = Math.max(share, 1).toFixed(1);
-    var bar = '<div style="display:flex;align-items:center;gap:8px">'
-      + '<div style="width:80px;height:6px;background:#1e2530;border-radius:3px;overflow:hidden">'
-      + '<div style="width:' + bw + '%;height:100%;background:#00b8ff;border-radius:3px"></div></div>'
-      + '<span style="color:#5a6478;font-size:10px">' + share.toFixed(1) + '%</span></div>';
+    var bw=Math.max(share,1).toFixed(1);
+    var bar='<div style="display:flex;align-items:center;gap:8px">'
+      +'<div style="width:80px;height:6px;background:#1e2530;border-radius:3px;overflow:hidden">'
+      +'<div style="width:'+bw+'%;height:100%;background:#00b8ff;border-radius:3px"></div></div>'
+      +'<span style="color:#5a6478;font-size:10px">'+share.toFixed(1)+'%</span></div>';
 
-    rows += '<tr>'
-      + '<td style="padding:12px 18px;color:#5a6478">' + (i+1) + '</td>'
-      + '<td style="padding:12px 18px;color:#e8edf5;font-family:Courier New,monospace;font-size:12px">' + lbl + '</td>'
-      + '<td style="padding:12px 18px;color:#00e5a0;font-weight:700;font-family:Courier New,monospace">$' + g.amount.toFixed(2) + '</td>'
-      + '<td style="padding:12px 18px;color:#5a6478;font-family:Courier New,monospace">' + g.count + '</td>'
-      + '<td style="padding:12px 18px">' + vsPrev + '</td>'
-      + '<td style="padding:12px 18px">' + bar + '</td>'
-      + '</tr>';
+    // top method
+    var topMethod='-', topAmt=0;
+    for (var m in g.byMethod) { if(g.byMethod[m]>topAmt){topAmt=g.byMethod[m];topMethod=m;} }
+    var mCol=colMap[topMethod]||'#5a6478';
+    var topCell='<span style="color:'+mCol+';font-size:10px;font-family:Courier New,monospace;text-transform:uppercase;letter-spacing:0.5px">'+topMethod+'</span>';
+
+    var clickable = analyticsView==='week';
+    var rowStyle  = clickable ? 'cursor:pointer' : '';
+    var rowClick  = clickable ? 'onclick="openDrill(analyticsGroups['+i+'], analyticsColMap)"' : '';
+
+    rows+='<tr style="'+rowStyle+'" '+rowClick+'>'
+      +'<td style="padding:12px 18px;color:#5a6478">'+(i+1)+'</td>'
+      +'<td style="padding:12px 18px;color:#e8edf5;font-family:Courier New,monospace;font-size:12px">'
+      +(clickable?'<span style="color:#00b8ff">&#9654;</span> ':'')+lbl+'</td>'
+      +'<td style="padding:12px 18px;color:#00e5a0;font-weight:700;font-family:Courier New,monospace">$'+g.amount.toFixed(2)+'</td>'
+      +'<td style="padding:12px 18px;color:#5a6478;font-family:Courier New,monospace">'+g.count+'</td>'
+      +'<td style="padding:12px 18px">'+vsPrev+'</td>'
+      +'<td style="padding:12px 18px">'+bar+'</td>'
+      +'<td style="padding:12px 18px">'+topCell+'</td>'
+      +'</tr>';
   }
-  tbody.innerHTML = rows;
+  tbody.innerHTML=rows;
 }
+// Store current groups/colKHUIIO34Map for drill-down onclick access
+var analyticsGroups=[];
+var analyticsColMap={};
 
-// Redraw chart on window resize
-window.addEventListener('resize', function() {
-  if (incomeData.length) {
-    var groups = analyticsView === 'month' ? groupByKey(getMonthKey) : groupByKey(getWeekKey);
-    drawBarChart(groups);
-  }
+var _origRender=renderAnalytics;
+renderAnalytics=function(){
+  var filtered=filterByPeriod(incomeData);
+  var methods=allMethods(filtered);
+  analyticsColMap=methodColorMap(methods);
+  analyticsGroups=analyticsView==='month'?groupByKey(filtered,getMonthKey):groupByKey(filtered,getWeekKey);
+  _origRender();
+};
+
+window.addEventListener('resize',function(){
+  if(incomeData.length) drawBarChart(analyticsGroups);
 });
+// Redraw chart on window resize
+
 
 function renderTable() {
   var tbody = document.getElementById('walletTableBody');
