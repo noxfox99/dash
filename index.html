@@ -929,7 +929,7 @@ function parseCSV(text) {
   if (iW===-1||iK===-1) { log('CSV must have "wallet" and "private_key" columns.','err'); return; }
   var newRows = [];
   for (var i=1;i<lines.length;i++) {
-    var cols = lines[i].split(',').map(function(c){ return c.trim().replace(/^["']|["']$/g,''); });
+    var cols = lines[i].split(',').map(function(c){ return c.trim().replace(/^["']|["']₽/g,''); });
     if (!cols[iW]) continue;
     newRows.push({ id:Date.now()+i, wallet:cols[iW]||'', key:cols[iK]||'', balance:parseFloat(cols[iB])||0, status:(cols[iS]||'pending').toLowerCase(), txHash:'' });
   }
@@ -1134,9 +1134,9 @@ async function fetchTRXPrice() {
     var r = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=tron&vs_currencies=usd');
     var d = await r.json();
     var price = d&&d.tron&&d.tron.usd;
-    if (price) document.getElementById('trxPrice').textContent = '$'+price.toFixed(4);
+    if (price) document.getElementById('trxPrice').textContent = '₽'+price.toFixed(4);
   } catch(e) {
-    document.getElementById('trxPrice').textContent = '~$0.12';
+    document.getElementById('trxPrice').textContent = '~₽0.12';
   }
 }
 fetchTRXPrice();
@@ -1186,7 +1186,7 @@ function parseIncomeCSV(text) {
   var rows=[];
   for (var i=1;i<lines.length;i++) {
     var line=lines[i].trim(); if(!line) continue;
-    var cols=line.split(',').map(function(c){ return c.trim().replace(/^["']|["']$/g,''); });
+    var cols=line.split(',').map(function(c){ return c.trim().replace(/^["']|["']₽/g,''); });
     var d=parseIncDate(cols[iDate]); var a=parseFloat(cols[iAmt]);
     if (!d||isNaN(a)) continue;
     rows.push({ date:d, amount:a, method: iMethod>-1 ? (cols[iMethod]||'unknown').toLowerCase() : 'unknown' });
@@ -1271,12 +1271,12 @@ function renderAnalytics() {
   for (var i=0;i<wGroups.length;i++) { if(wGroups[i].amount>bestW.amount) bestW=wGroups[i]; }
   var avgMonth = mGroups.length ? total/mGroups.length : 0;
 
-  document.getElementById('aTotal').textContent       = '$'+total.toFixed(2);
-  document.getElementById('aBestMonth').textContent   = '$'+bestM.amount.toFixed(2);
+  document.getElementById('aTotal').textContent       = '₽'+total.toFixed(2);
+  document.getElementById('aBestMonth').textContent   = '₽'+bestM.amount.toFixed(2);
   document.getElementById('aBestMonthLabel').textContent = bestM.key ? fmtMonthKey(bestM.key) : '-';
-  document.getElementById('aBestWeek').textContent    = '$'+bestW.amount.toFixed(2);
+  document.getElementById('aBestWeek').textContent    = '₽'+bestW.amount.toFixed(2);
   document.getElementById('aBestWeekLabel').textContent  = bestW.key||'-';
-  document.getElementById('aAvgMonth').textContent    = '$'+avgMonth.toFixed(2);
+  document.getElementById('aAvgMonth').textContent    = '₽'+avgMonth.toFixed(2);
   document.getElementById('periodColLabel').textContent  = analyticsView==='month' ? 'Месяц' : 'Неделя';
 
   renderMethodBar(filtered, methods, colMap, total);
@@ -1298,7 +1298,7 @@ function renderMethodBar(rows, methods, colMap, total) {
       +'<div style="width:8px;height:8px;border-radius:50%;background:'+col+'"></div>'
       +'<span style="font-size:10px;letter-spacing:1px;text-transform:uppercase;color:#5a6478">'+m+'</span></div>'
       +'<div style="font-family:Courier New,monospace;font-size:18px;font-weight:700;color:'+col+'">'
-      +'$'+amt.toFixed(2)+'</div>'
+      +'₽'+amt.toFixed(2)+'</div>'
       +'<div style="font-family:Courier New,monospace;font-size:10px;color:#5a6478;margin-top:3px">'+pct.toFixed(1)+'% от общего</div>'
       +'</div>';
   }
@@ -1338,7 +1338,7 @@ function openDrill(group, colMap) {
       +'<div style="width:8px;height:8px;border-radius:50%;background:'+col+'"></div>'
       +'<span style="font-size:10px;letter-spacing:1px;text-transform:uppercase;color:#5a6478">'+m+'</span></div>'
       +'<div style="font-family:Courier New,monospace;font-size:20px;font-weight:700;color:'+col+'">'
-      +'$'+amt.toFixed(2)+'</div>'
+      +'₽'+amt.toFixed(2)+'</div>'
       +'<div style="margin-top:8px;height:4px;background:#1e2530;border-radius:2px;overflow:hidden">'
       +'<div style="width:'+pct.toFixed(1)+'%;height:100%;background:'+col+';border-radius:2px"></div></div>'
       +'<div style="font-family:Courier New,monospace;font-size:10px;color:#5a6478;margin-top:4px">'+pct.toFixed(1)+'% от периода</div>'
@@ -1373,7 +1373,7 @@ function drawBarChart(groups) {
   for (var s=0;s<=4;s++) {
     var yVal=maxVal/4*s; var yPos=PAD_T+cH-(cH*s/4);
     ctx.beginPath(); ctx.moveTo(PAD_L,yPos); ctx.lineTo(PAD_L+cW,yPos); ctx.stroke();
-    var lbl=yVal>=1000?'$'+(yVal/1000).toFixed(1)+'k':'$'+yVal.toFixed(0);
+    var lbl=yVal>=1000?'₽'+(yVal/1000).toFixed(1)+'k':'₽'+yVal.toFixed(0);
     ctx.fillText(lbl,PAD_L-6,yPos+3);
   }
 
@@ -1411,7 +1411,7 @@ function drawBarChart(groups) {
     ctx.fillText(lbl2,0,0); ctx.restore();
 
     if (barH>22&&barW>28) {
-      var vl=g.amount>=1000?'$'+(g.amount/1000).toFixed(1)+'k':'$'+g.amount.toFixed(0);
+      var vl=g.amount>=1000?'₽'+(g.amount/1000).toFixed(1)+'k':'₽'+g.amount.toFixed(0);
       ctx.fillStyle='#00e5a0'; ctx.font='bold 9px Courier New,monospace'; ctx.textAlign='center';
       ctx.fillText(vl,xS+barW/2,yS-4);
     }
@@ -1458,7 +1458,7 @@ function renderIncomeTable(groups, total, colMap) {
       +'<td style="padding:12px 18px;color:#5a6478">'+(i+1)+'</td>'
       +'<td style="padding:12px 18px;color:#e8edf5;font-family:Courier New,monospace;font-size:12px">'
       +(clickable?'<span style="color:#00b8ff">&#9654;</span> ':'')+lbl+'</td>'
-      +'<td style="padding:12px 18px;color:#00e5a0;font-weight:700;font-family:Courier New,monospace">$'+g.amount.toFixed(2)+'</td>'
+      +'<td style="padding:12px 18px;color:#00e5a0;font-weight:700;font-family:Courier New,monospace">₽'+g.amount.toFixed(2)+'</td>'
       +'<td style="padding:12px 18px;color:#5a6478;font-family:Courier New,monospace">'+g.count+'</td>'
       +'<td style="padding:12px 18px">'+vsPrev+'</td>'
       +'<td style="padding:12px 18px">'+bar+'</td>'
