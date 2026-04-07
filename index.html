@@ -811,6 +811,7 @@ line-height: 2.2;
     <div style="display:flex;gap:4px;background:#0e1219;padding:4px;border-radius:10px;border:1px solid #1e2530">
       <button class="tab active" id="viewMonthBtn" onclick="switchAnalyticsView('month',this)" style="padding:5px 14px;font-size:11px">По месяцам</button>
       <button class="tab"        id="viewWeekBtn"  onclick="switchAnalyticsView('week',this)"  style="padding:5px 14px;font-size:11px">По неделям</button>
+      <button class="tab"        id="viewDayBtn"   onclick="switchAnalyticsView('day',this)"   style="padding:5px 14px;font-size:11px">По дням</button>
     </div>
   </div>
 
@@ -1242,6 +1243,14 @@ function fmtWeekKey(k) {
   return 'Нед. ' + p[2] + '.' + p[1] + '.' + p[0];
 }
 function fmtMonthKey(k) { var p=k.split('-'); return MNAMES[parseInt(p[1])-1]+' '+p[0]; }
+function getDayKey(d) {
+  var mm=d.getMonth()+1, dd=d.getDate();
+  return d.getFullYear()+'-'+(mm<10?'0':'')+mm+'-'+(dd<10?'0':'')+dd;
+}
+function fmtDayKey(k) {
+  var p=k.split('-');
+  return p[2]+' '+MNAMES[parseInt(p[1])-1]+' '+p[0];
+}
 
 function allMethods(rows) {
   var map={};
@@ -1269,7 +1278,7 @@ function methodColorMap(methods) {
 
 function renderAnalytics() {
   var filtered = filterByPeriod(incomeData);
-  var groups   = analyticsView==='month' ? groupByKey(filtered,getMonthKey) : groupByKey(filtered,getWeekKey);
+  var groups   = analyticsView==='month' ? groupByKey(filtered,getMonthKey) : analyticsView==='week' ? groupByKey(filtered,getWeekKey) : groupByKey(filtered,getDayKey);
   var mGroups  = groupByKey(filtered,getMonthKey);
   var wGroups  = groupByKey(filtered,getWeekKey);
   var methods  = allMethods(filtered);
@@ -1289,7 +1298,7 @@ function renderAnalytics() {
   document.getElementById('aBestWeek').textContent    = '₽'+bestW.amount.toFixed(2);
   document.getElementById('aBestWeekLabel').textContent  = bestW.key||'-';
   document.getElementById('aAvgMonth').textContent    = '₽'+avgMonth.toFixed(2);
-  document.getElementById('periodColLabel').textContent  = analyticsView==='month' ? 'Месяц' : 'Неделя';
+  document.getElementById('periodColLabel').textContent  = analyticsView==='month' ? 'Месяц' : analyticsView==='week' ? 'Неделя' : 'День';
 
   renderMethodBar(filtered, methods, colMap, total);
   drawBarChart(groups);
@@ -1328,7 +1337,7 @@ function renderMethodBar(rows, methods, colMap, total) {
 
 function switchAnalyticsView(view, el) {
   analyticsView=view;
-  var btns=document.querySelectorAll('#viewMonthBtn,#viewWeekBtn');
+  var btns=document.querySelectorAll('#viewMonthBtn,#viewWeekBtn,#viewDayBtn');
   for (var i=0;i<btns.length;i++) btns[i].classList.remove('active');
   el.classList.add('active');
   closeDrill();
@@ -1339,7 +1348,7 @@ function switchAnalyticsView(view, el) {
 function openDrill(group, colMap) {
   var methods=Object.keys(group.byMethod).sort();
   var panel=document.getElementById('drillPanel');
-  var title=analyticsView==='month' ? fmtMonthKey(group.key) : fmtWeekKey(group.key);
+  var title=analyticsView==='month' ? fmtMonthKey(group.key) : analyticsView==='week' ? fmtWeekKey(group.key) : fmtDayKey(group.key);
   document.getElementById('drillTitle').textContent = title+' — по методам оплаты';
   var html='';
   for (var i=0;i<methods.length;i++) {
@@ -1416,7 +1425,7 @@ function drawBarChart(groups) {
     ctx.beginPath(); ctx.moveTo(xS+r,yS); ctx.lineTo(xS+barW-r,yS);
     ctx.quadraticCurveTo(xS+barW,yS,xS+barW,yS+r); ctx.stroke();
 
-    var lbl2=analyticsView==='month'?fmtMonthKey(g.key):fmtWeekKey(g.key);
+    var lbl2=analyticsView==='month'?fmtMonthKey(g.key):analyticsView==='week'?fmtWeekKey(g.key):fmtDayKey(g.key);
     ctx.fillStyle='#5a6478'; ctx.font='9px Courier New,monospace'; ctx.textAlign='center';
     ctx.save(); ctx.translate(xS+barW/2,H-PAD_B+14);
     if(n>8){ctx.rotate(-Math.PI/4);ctx.textAlign='right';}
@@ -1439,7 +1448,7 @@ function renderIncomeTable(groups, total, colMap) {
   var rows='';
   for (var i=0;i<groups.length;i++) {
     var g=groups[i];
-    var lbl=analyticsView==='month'?fmtMonthKey(g.key):fmtWeekKey(g.key);
+    var lbl=analyticsView==='month'?fmtMonthKey(g.key):analyticsView==='week'?fmtWeekKey(g.key):fmtDayKey(g.key);
     var share=total>0?(g.amount/total*100):0;
     var vsPrev='<span style="color:#5a6478">-</span>';
     if (i>0) {
@@ -1462,7 +1471,7 @@ function renderIncomeTable(groups, total, colMap) {
     var mCol=colMap[topMethod]||'#5a6478';
     var topCell='<span style="color:'+mCol+';font-size:10px;font-family:Courier New,monospace;text-transform:uppercase;letter-spacing:0.5px">'+topMethod+'</span>';
 
-    var clickable = analyticsView==='week';
+    var clickable = analyticsView==='week' || analyticsView==='day';
     var rowStyle  = clickable ? 'cursor:pointer' : '';
     var rowClick  = clickable ? 'onclick="openDrill(analyticsGroups['+i+'], analyticsColMap)"' : '';
 
@@ -1489,7 +1498,7 @@ renderAnalytics=function(){
   var filtered=filterByPeriod(incomeData);
   var methods=allMethods(filtered);
   analyticsColMap=methodColorMap(methods);
-  analyticsGroups=analyticsView==='month'?groupByKey(filtered,getMonthKey):groupByKey(filtered,getWeekKey);
+  analyticsGroups=analyticsView==='month'?groupByKey(filtered,getMonthKey):analyticsView==='week'?groupByKey(filtered,getWeekKey):groupByKey(filtered,getDayKey);
   _origRender();
 };
 
